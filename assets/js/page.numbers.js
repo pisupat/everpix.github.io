@@ -131,9 +131,6 @@ $(function() {
           $.scrollTo($section, {
             duration : 500,
             easing : "easeInOutQuad",
-            offset : {
-                top : Math.round($window.height() / -4)
-              },
             onAfter : function() {
                 updateSectionsOnChange = true;
               }
@@ -147,11 +144,11 @@ $(function() {
 
   $navLinks = $navUl.find("a");
 
-  $window.on("scroll resize orientationchange", function() {
+  $window.on("scroll resize orientationchange", _.debounce(function() {
     var scrollTop = $window.scrollTop(),
         windowHeight,
         documentHeight,
-        thirdLine,
+        threshold,
         $sectionToSelect;
 
     // $("#sectionNav").css("top", scrollTop > mainTop ? scrollTop - mainTop : 0);
@@ -164,12 +161,12 @@ $(function() {
       if (scrollTop + windowHeight >= $(document).height()) {
         $sectionToSelect = $sections.last();
       } else {
-        thirdLine = scrollTop + Math.round(windowHeight / 4);
+        threshold = scrollTop + Math.round(windowHeight / 4);
 
         $sections.each(function() {
           var $th = $(this);
 
-          if ($th.offset().top <= thirdLine) {
+          if ($th.offset().top <= threshold) {
             $sectionToSelect = $th;
           } else {
             return false;
@@ -181,7 +178,7 @@ $(function() {
         switchToSection($sectionToSelect.attr("id"));
       }
     }
-  });
+  }, 16));
 
   // Expandoids
   $(".expandoid").each(function() {
@@ -352,9 +349,7 @@ $(function() {
         tooltipValueFormatter = function(data) {
           return (100 * data[1]).toFixed(1) + "%";
         };
-      }
-
-      if (usesDollars) {
+      } else if (usesDollars) {
         yaxisOverrides.tickFormatter = function(tick) {
           return "$" + (tick > 10 ? addCommas(tick) : tick.toFixed(2));
         };
@@ -362,12 +357,14 @@ $(function() {
         tooltipValueFormatter = function(data) {
           return "$" + addCommas(data[1].toFixed(2));
         };
-      }
-
-      if (isLogarithmic) {
+      } else if (isLogarithmic) {
         yaxisOverrides.transform = function(v) { return Math.log(v + 0.01); };
         yaxisOverrides.inverseTransform = function(v) { return Math.exp(v); };
         yaxisOverrides.ticks = [0.01, 0.1, 1, 10, 100];
+        yaxisOverrides.tickFormatter = function(tick) {
+          return addCommas(tick);
+        };
+      } else {
         yaxisOverrides.tickFormatter = function(tick) {
           return addCommas(tick);
         };
@@ -382,6 +379,10 @@ $(function() {
 
       // Special cases
       switch ($th.parents(".subsection").attr("id")) {
+        case "users/origins" :
+          yaxisOverrides.max = 1;
+          break;
+
         case "users/countries-free" :
           pieOverrides.combine = {
             threshold : 0.032
@@ -391,6 +392,13 @@ $(function() {
         case "users/countries-subscribers" :
           pieOverrides.combine = {
             threshold : 0.0165
+          };
+          break;
+
+        case "photos/total" :
+          legendOverrides.noColumns = 2;
+          tooltipValueFormatter = function(data) {
+            return addCommas(data[1] * 1000000);
           };
           break;
 
@@ -579,6 +587,12 @@ $(function() {
     }
 
     if (!$th.hasClass("rendered")) {
+      Spinner.show(id);
+
+      dfd.done(function() {
+        Spinner.hide(id);
+      });
+
       if ($th.data("json")) {
         setItUp($th.data("json"));
       } else if ($th.data("load")) {
@@ -586,6 +600,8 @@ $(function() {
         $.getJSON($th.data("load")).done(setItUp).fail(function() {
           dfd.resolve();
         });
+      } else {
+        dfd.resolve();
       }
     } else {
       dfd.resolve();
@@ -594,3 +610,29 @@ $(function() {
     return dfd.promise();
   });
 });
+
+var Spinner = (function() {
+  var showRequests = {},
+      $spinner = $("#activity");
+
+  function hide(id) {
+    if (showRequests[id]) {
+      delete showRequests[id];
+    }
+
+    if ($.isEmptyObject(showRequests)) {
+      $spinner.removeClass("visible");
+    }
+  }
+
+  function show(id) {
+    $spinner.addClass("visible");
+
+    showRequests[id] = true;
+  }
+
+  return {
+    hide : hide,
+    show : show
+  }
+})();
